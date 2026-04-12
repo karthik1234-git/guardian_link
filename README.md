@@ -101,19 +101,6 @@ guardian_link/
 
 ---
 
-## 👥 Team Members
-
-| Name | Roll Number | Role |
-|------|-------------|------|
-| Karthik N | CS21B001 | Hardware & Firmware |
-| Member 2  | CS21B002 | Backend & Firebase |
-| Member 3  | CS21B003 | Frontend & Dashboard |
-| Member 4  | CS21B004 | Testing & Documentation |
-
-> **Guide:** Prof. [Faculty Name], Department of CSE
-
----
-
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
