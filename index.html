@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GuardianLink — IoT Mini Project</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Leaflet.js CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Leaflet.js JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Firebase App (compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+  <style>
+    /* ── Smooth pulse animation for the live-dot ── */
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.8); opacity: 1; }
+      100% { transform: scale(2);   opacity: 0; }
+    }
+    .live-dot::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse-ring 1.4s ease-out infinite;
+    }
+    .live-dot { position: relative; display: inline-block; }
+
+    /* ── Map container ── */
+    #map { height: 420px; border-radius: 0.75rem; }
+
+    /* ── Alert banner ── */
+    #alertBanner {
+      display: none;
+      background: #ef4444;
+      color: white;
+      text-align: center;
+      padding: 0.6rem 1rem;
+      font-weight: 600;
+      border-radius: 0.5rem;
+      animation: pulse-ring 1s ease-out infinite;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-950 text-gray-100 min-h-screen font-sans">
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       ACADEMIC HEADER BANNER
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <div class="bg-indigo-900 border-b border-indigo-700 py-3 px-4 text-center text-sm text-indigo-200">
+    🎓 &nbsp;
+    <strong>IoT Mini Project — Real-Time Geofencing &amp; Patient Tracker</strong>
+    &nbsp;|&nbsp; Department of Computer Science &amp; Engineering &nbsp;|&nbsp; Academic Year 2024–25
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TOP NAV / TITLE
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <header class="bg-gray-900 border-b border-gray-800 px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <!-- Shield icon -->
+      <svg class="w-9 h-9 text-indigo-400" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 1L3 5v6c0 5.25 3.75 10.15 9 11.35C17.25 21.15 21 16.25 21 11V5l-9-4z"/>
+      </svg>
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight text-white">GuardianLink</h1>
+        <p class="text-xs text-gray-400">Real-Time GPS Geofencing Dashboard &mdash; ESP32 + Firebase</p>
+      </div>
+    </div>
+
+    <!-- Live status pill -->
+    <div class="flex items-center gap-2 bg-gray-800 rounded-full px-4 py-2 text-sm">
+      <span class="live-dot w-3 h-3 rounded-full bg-green-500"></span>
+      <span id="connectionStatus" class="text-green-400 font-medium">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       MAIN CONTENT
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+    <!-- ── Geofence Alert Banner ── -->
+    <div id="alertBanner" role="alert">
+      ⚠️ GEOFENCE BREACH DETECTED — Patient has left the safe zone!
+    </div>
+
+    <!-- ── Stat Cards Row ── -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+
+      <!-- Latitude -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Latitude</p>
+        <p id="lat" class="text-lg font-mono font-semibold text-indigo-300">--</p>
+      </div>
+
+      <!-- Longitude -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Longitude</p>
+        <p id="lng" class="text-lg font-mono font-semibold text-indigo-300">--</p>
+      </div>
+
+      <!-- Speed -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Speed</p>
+        <p id="speed" class="text-lg font-mono font-semibold text-cyan-300">-- km/h</p>
+      </div>
+
+      <!-- Battery -->
+      <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <p class="text-xs text-gray-500 uppercase tracking-widest mb-1">Battery</p>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 bg-gray-700 rounded-full h-2.5">
+            <div id="batteryBar" class="bg-green-500 h-2.5 rounded-full transition-all" style="width: 0%"></div>
+          </div>
+          <span id="batteryText" class="text-sm font-mono text-green-400">--%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Map + Sidebar Layout ── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- Map (takes 2/3 width on large screens) -->
+      <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">📍 Live Map</h2>
+          <span id="lastUpdate" class="text-xs text-gray-500">Last update: --</span>
+        </div>
+        <div id="map"></div>
+        <p class="text-xs text-gray-600 mt-2 text-center">
+          🔵 Patient Location &nbsp;|&nbsp; 🟢 Geofence Safe Zone
+        </p>
+      </div>
+
+      <!-- Sidebar Info Panel -->
+      <div class="space-y-4">
+
+        <!-- Device Info -->
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">🛰️ Device Info</h2>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-500">Hardware</span>
+              <span class="text-gray-200 font-mono">ESP32 + NEO-6M</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Protocol</span>
+              <span class="text-gray-200 font-mono">Wi-Fi / Firebase</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">GPS Fix</span>
+              <span id="gpsFix" class="text-yellow-400 font-mono">Acquiring…</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Satellites</span>
+              <span id="satellites" class="text-gray-200 font-mono">--</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Geofence Control -->
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-3">
+          <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">🔵 Geofence</h2>
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-500">Radius</span>
+              <span id="geoRadius" class="text-blue-400 font-mono">200 m</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Status</span>
+              <span id="geoStatus" class="text-green-400 font-semibold">Safe ✔</span>
+            </div>
+          </div>
+          <!-- Radius Slider -->
+          <div>
+            <label class="text-xs text-gray-500 block mb-1">Adjust Radius</label>
+            <input id="radiusSlider" type="range" min="50" max="1000" value="200" step="50"
+              class="w-full accent-indigo-500 cursor-pointer"
+              oninput="updateGeofenceRadius(this.value)" />
+          </div>
+        </div>
+
+        <!-- Patient Info -->
+        <!-- NOTE: Replace the placeholder values below with real patient data,
+             or load them dynamically from Firebase (/tracker/patient). -->
+        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-2">
+          <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">🧑‍⚕️ Patient Info</h2>
+          <div class="space-y-1 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-500">Name</span>
+              <span class="text-gray-200">Patient Name</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Age</span>
+              <span class="text-gray-200">72 yrs</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Condition</span>
+              <span class="text-gray-200">Alzheimer's</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-gray-500">Caregiver</span>
+              <span class="text-gray-200">Family Member</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- end grid -->
+
+    <!-- ── Project Info Card ── -->
+    <div class="bg-gray-900 rounded-xl border border-indigo-900 p-5">
+      <h2 class="text-sm font-semibold text-indigo-400 uppercase tracking-wider mb-3">📚 About This Project</h2>
+      <p class="text-sm text-gray-400 leading-relaxed">
+        <strong class="text-gray-200">GuardianLink</strong> is an IoT-based real-time geofencing system developed as an academic mini-project.
+        An <strong class="text-gray-200">ESP32 microcontroller</strong> paired with a <strong class="text-gray-200">GPS Neo-6M</strong> module
+        continuously tracks the patient's location and streams it to <strong class="text-gray-200">Google Firebase</strong>.
+        This web dashboard subscribes to those updates and renders the live position on a <strong class="text-gray-200">Leaflet.js</strong> map.
+        If the patient exits the configured geofence radius, an instant alert is shown — enabling caregivers to respond quickly.
+      </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">ESP32</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">GPS Neo-6M</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">Firebase RTDB</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">Leaflet.js</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">Tailwind CSS</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">IoT</span>
+        <span class="bg-indigo-900/50 text-indigo-300 text-xs px-3 py-1 rounded-full border border-indigo-700">Real-Time</span>
+      </div>
+    </div>
+
+    <!-- ── Team Members Card ── -->
+    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+      <h2 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">👥 Team Members</h2>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center text-sm">
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="font-semibold text-white">Karthik N</p>
+          <p class="text-gray-500 text-xs">CS21B001</p>
+          <p class="text-indigo-400 text-xs mt-1">Hardware &amp; Firmware</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="font-semibold text-white">Member 2</p>
+          <p class="text-gray-500 text-xs">CS21B002</p>
+          <p class="text-indigo-400 text-xs mt-1">Firebase Backend</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="font-semibold text-white">Member 3</p>
+          <p class="text-gray-500 text-xs">CS21B003</p>
+          <p class="text-indigo-400 text-xs mt-1">Frontend Dashboard</p>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-3">
+          <p class="font-semibold text-white">Member 4</p>
+          <p class="text-gray-500 text-xs">CS21B004</p>
+          <p class="text-indigo-400 text-xs mt-1">Testing &amp; Docs</p>
+        </div>
+      </div>
+      <p class="text-xs text-gray-600 text-center mt-3">
+        Guide: Prof. [Faculty Name] &nbsp;|&nbsp; Department of CSE
+      </p>
+    </div>
+
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       FOOTER
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <footer class="bg-gray-900 border-t border-gray-800 text-center py-4 text-xs text-gray-600 mt-6">
+    GuardianLink &mdash; IoT Mini Project &nbsp;|&nbsp; Real-Time Geofencing &amp; Patient Safety System &nbsp;|&nbsp;
+    Built with ESP32, GPS Neo-6M &amp; Firebase &nbsp;|&nbsp;
+    <a href="https://github.com/karthik1234-git/guardian_link" class="text-indigo-500 hover:underline">GitHub Repository</a>
+    &nbsp;|&nbsp; MIT License &copy; 2025
+  </footer>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       JAVASCRIPT — Map initialisation & Firebase real-time listener
+  ════════════════════════════════════════════════════════════════════════════ -->
+  <script>
+    // ────────────────────────────────────────────────────────────────────────
+    // 🔥 Firebase Configuration
+    // Replace these placeholder values with your own Firebase project credentials.
+    // IMPORTANT: Do NOT commit real credentials. Use environment variables or
+    // Firebase Hosting config injection for production deployments.
+    // ────────────────────────────────────────────────────────────────────────
+    const firebaseConfig = {
+      apiKey:            "YOUR_API_KEY",
+      authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+      databaseURL:       "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+      projectId:         "YOUR_PROJECT_ID",
+      storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId:             "YOUR_APP_ID"
+    };
+
+    // ── Initialise Firebase ──────────────────────────────────────────────────
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 🗺️  Map Setup — centred on a default location until first GPS fix
+    // ────────────────────────────────────────────────────────────────────────
+    const DEFAULT_LAT  = 13.0827;   // Chennai, India (placeholder)
+    const DEFAULT_LNG  = 80.2707;
+    let   geofenceRadius = 200;     // metres
+
+    const map = L.map('map').setView([DEFAULT_LAT, DEFAULT_LNG], 15);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Custom patient marker icon
+    const patientIcon = L.divIcon({
+      html: `<div style="
+        background:#6366f1; border:3px solid #fff; border-radius:50%;
+        width:20px; height:20px; box-shadow:0 0 8px #6366f1aa;">
+      </div>`,
+      className: '',
+      iconSize:  [20, 20],
+      iconAnchor:[10, 10]
+    });
+
+    let patientMarker = L.marker([DEFAULT_LAT, DEFAULT_LNG], { icon: patientIcon })
+      .addTo(map)
+      .bindPopup('📍 Patient Location');
+
+    let geofenceCircle = L.circle([DEFAULT_LAT, DEFAULT_LNG], {
+      radius:      geofenceRadius,
+      color:       '#22c55e',
+      fillColor:   '#22c55e',
+      fillOpacity: 0.08,
+      weight:      2
+    }).addTo(map);
+
+    // ────────────────────────────────────────────────────────────────────────
+    // 📡  Firebase Real-Time Listener
+    // Path assumed: /tracker/location  with keys: lat, lng, speed, battery, satellites
+    // Adjust the database path to match your ESP32 firmware.
+    // ────────────────────────────────────────────────────────────────────────
+    db.ref('/tracker/location').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        setConnectionStatus(false);
+        return;
+      }
+
+      setConnectionStatus(true);
+
+      const lat  = parseFloat(data.lat  ?? DEFAULT_LAT);
+      const lng  = parseFloat(data.lng  ?? DEFAULT_LNG);
+      const spd  = parseFloat(data.speed    ?? 0).toFixed(1);
+      const bat  = parseInt(data.battery    ?? 0);
+      const sats = parseInt(data.satellites ?? 0);
+
+      // Update stat cards
+      document.getElementById('lat').textContent   = lat.toFixed(6);
+      document.getElementById('lng').textContent   = lng.toFixed(6);
+      document.getElementById('speed').textContent = `${spd} km/h`;
+      document.getElementById('satellites').textContent = sats;
+      document.getElementById('lastUpdate').textContent = 'Last update: ' + new Date().toLocaleTimeString();
+
+      // Battery bar
+      document.getElementById('batteryBar').style.width = `${bat}%`;
+      document.getElementById('batteryText').textContent = `${bat}%`;
+      document.getElementById('batteryBar').className =
+        'h-2.5 rounded-full transition-all ' +
+        (bat > 50 ? 'bg-green-500' : bat > 20 ? 'bg-yellow-500' : 'bg-red-500');
+
+      // GPS fix indicator
+      document.getElementById('gpsFix').textContent  = sats > 0 ? 'Fixed ✔' : 'Acquiring…';
+      document.getElementById('gpsFix').className    = sats > 0 ? 'text-green-400 font-mono' : 'text-yellow-400 font-mono';
+
+      // Move marker & geofence circle
+      const latlng = [lat, lng];
+      patientMarker.setLatLng(latlng);
+
+      // Lock the geofence center to the first valid GPS fix (the patient's safe-zone origin).
+      if (!geofenceCenterSet && (data.lat != null) && (data.lng != null)) {
+        geofenceCenter = { lat, lng };
+        geofenceCenterSet = true;
+        geofenceCircle.setLatLng(latlng);
+        map.setView(latlng, 16);
+      }
+
+      map.panTo(latlng);
+
+      // Geofence check
+      checkGeofence(lat, lng);
+    }, (error) => {
+      console.error('Firebase error:', error);
+      setConnectionStatus(false);
+    });
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Helper: connection status UI
+    // ────────────────────────────────────────────────────────────────────────
+    function setConnectionStatus(connected) {
+      const el = document.getElementById('connectionStatus');
+      if (connected) {
+        el.textContent  = 'Live';
+        el.className    = 'text-green-400 font-medium';
+      } else {
+        el.textContent  = 'Disconnected';
+        el.className    = 'text-red-400 font-medium';
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Helper: Geofence breach check (Haversine formula)
+    // The geofence center is fixed at the first valid GPS position received
+    // from the device (i.e., the patient's home / safe-zone origin).
+    // After the first fix the center is locked; only the radius can be adjusted.
+    // ────────────────────────────────────────────────────────────────────────
+    let geofenceCenter    = { lat: DEFAULT_LAT, lng: DEFAULT_LNG };
+    let geofenceCenterSet = false;   // becomes true after first valid GPS fix
+
+    function haversineDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371000; // Earth radius in metres
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function checkGeofence(lat, lng) {
+      const dist   = haversineDistance(geofenceCenter.lat, geofenceCenter.lng, lat, lng);
+      const breach = dist > geofenceRadius;
+      document.getElementById('alertBanner').style.display = breach ? 'block' : 'none';
+      const geoStatusEl = document.getElementById('geoStatus');
+      geoStatusEl.textContent = breach ? 'BREACH ✖' : 'Safe ✔';
+      geoStatusEl.className   = breach
+        ? 'text-red-400 font-semibold animate-pulse'
+        : 'text-green-400 font-semibold';
+      geofenceCircle.setStyle({ color: breach ? '#ef4444' : '#22c55e', fillColor: breach ? '#ef4444' : '#22c55e' });
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Geofence radius slider
+    // ────────────────────────────────────────────────────────────────────────
+    function updateGeofenceRadius(val) {
+      geofenceRadius = parseInt(val);
+      document.getElementById('geoRadius').textContent = `${geofenceRadius} m`;
+      geofenceCircle.setRadius(geofenceRadius);
+    }
+  </script>
+</body>
+</html>
