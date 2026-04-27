@@ -98,22 +98,7 @@ guardian_link/
 - 📶 **Device Health Monitoring** — Battery level and connectivity status displayed on dashboard.
 - 📱 **Responsive Design** — Works on desktop and mobile browsers (Tailwind CSS).
 - ⚡ **Low Latency** — Firebase Realtime Database ensures sub-second location updates.
-
----
-
-## 👥 Team Members
-
-| Name | Roll Number | Role |
-|------|-------------|------|
-| Karthik N | CS21B001 | Hardware & Firmware |
-| Member 2  | CS21B002 | Backend & Firebase |
-| Member 3  | CS21B003 | Frontend & Dashboard |
-| Member 4  | CS21B004 | Testing & Documentation |
-
-> **Guide:** Prof. [Faculty Name], Department of CSE
-
----
-
+  
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
